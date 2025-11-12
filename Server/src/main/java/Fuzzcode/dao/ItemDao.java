@@ -19,20 +19,18 @@ public class ItemDao {
                 rs.getBoolean("Deleted")
         );
     }
-    public int createItem(String tagId, Integer position, boolean overdue) {
+    public int createItem(String tagId, Position position, boolean overdue) {
         String sql = """
             INSERT INTO Items (TagID, Position, IsOverdue, Deleted)
             VALUES (?, ?, ?, FALSE)
         """;
-
         try (Connection c = ConnectionManager.getConnection();
              PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-
             ps.setString(1, tagId);
-            if (position == null) ps.setNull(2, Types.INTEGER); else ps.setInt(2, position);
+            if (position == null) ps.setString(2, String.valueOf(Position.HOME));
+            else ps.setString(2, position.name());
             ps.setBoolean(3, overdue);
             ps.executeUpdate();
-
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 return keys.next() ? keys.getInt(1) : 0;
             }
@@ -121,17 +119,20 @@ public class ItemDao {
             return false;
         }
     }
-    public boolean updatePosition(int itemId, int position) {
-        String sql = "UPDATE Items SET Position = ? WHERE ItemID = ? AND Deleted = FALSE";
-
-        try (Connection c = ConnectionManager.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, position);
+    public boolean updatePosition(int itemId, Position position) {
+        if (position == null) return false; // avoid NPE / NOT NULL violation
+        try (var c = ConnectionManager.getConnection();
+             var ps = c.prepareStatement("""
+             UPDATE Items
+                SET Position = ?
+              WHERE ItemID = ? AND Deleted = FALSE
+         """)) {
+            ps.setString(1, position.name());
             ps.setInt(2, itemId);
-            return ps.executeUpdate() > 0;
+            return ps.executeUpdate() == 1;
         } catch (SQLException e) {
             LoggerHandler.log(e);
-            return false;
+            return false; // or wrap to RuntimeException if that's your convention
         }
     }
     public boolean softDelete(int itemId) {

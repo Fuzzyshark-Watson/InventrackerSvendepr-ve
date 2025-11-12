@@ -13,6 +13,10 @@ public class OrderItemService {
     private final OrderItemDao orderItemDao = new OrderItemDao();
 
     public OrderItem assignItemToOrder(int itemId, int orderId) {
+        if (!orderItemDao.orderExists(orderId))
+            throw new IllegalArgumentException("Order " + orderId + " does not exist");
+        if (!orderItemDao.itemExists(itemId))
+            throw new IllegalArgumentException("Item " + itemId + " does not exist");
         OrderItem oi = orderItemDao.attach(orderId, itemId);
         LoggerHandler.log("Assigned: " + oi);
         return oi;
@@ -52,6 +56,6 @@ public class OrderItemService {
         return list;
     }
     public boolean isAttached(int orderId, int itemId) {
-        return orderItemDao.isAttached(orderId, itemId, true);
+        return orderItemDao.isAttached(orderId, itemId, false);
     }
 }

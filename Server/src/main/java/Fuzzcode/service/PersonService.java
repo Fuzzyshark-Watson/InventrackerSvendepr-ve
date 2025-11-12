@@ -9,6 +9,9 @@ import java.util.List;
 public class PersonService {
     private final PersonDao dao = new PersonDao();
     public Person createPerson(String name, PersonRole role) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Name must not be blank");
+        }
         int id = dao.createPerson(name, role);
         return dao.readPerson(id, true);
     }

@@ -6,7 +6,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DatabaseInitializer {
-
     public static void initSchema() {
         try (Connection c = ConnectionManager.getConnection();
              Statement stmt = c.createStatement()) {
@@ -56,17 +55,38 @@ public final class DatabaseInitializer {
                   Deleted BOOLEAN NOT NULL DEFAULT FALSE
                 )
             """);
+            stmt.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS IDX_Items_Tag ON Items(TagID)
+            """);
+            stmt.execute("""
+                CREATE INDEX IF NOT EXISTS IDX_Items_Position ON Items(Position)
+            """);
+
 
             stmt.execute("""
-                CREATE TABLE IF NOT EXISTS OrderItems (
-                  OrderID INT NOT NULL,
-                  ItemID INT NOT NULL,
-                  Deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                  PRIMARY KEY (OrderID, ItemID),
-                  FOREIGN KEY (OrderID) REFERENCES Orders(OrderID),
-                  FOREIGN KEY (ItemID) REFERENCES Items(ItemID)
-                )
-            """);
+                    CREATE TABLE IF NOT EXISTS OrderItems (
+                      OrderID INT NOT NULL,
+                      ItemID  INT NOT NULL,
+                      Deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                      PRIMARY KEY (OrderID, ItemID),
+                      FOREIGN KEY (OrderID) REFERENCES Orders(OrderID),
+                      FOREIGN KEY (ItemID)  REFERENCES Items(ItemID)
+                    )
+                """);
+
+                // Drop any legacy single-column unique indexes on ItemID
+                            stmt.execute("DROP INDEX IF EXISTS UQ_ORDERITEMS_ITEM");
+                            stmt.execute("DROP INDEX IF EXISTS UQ_OrderItems_Item");
+
+                // Helpful FKs indexes
+                            stmt.execute("CREATE INDEX IF NOT EXISTS IDX_OrderItems_Order ON OrderItems(OrderID)");
+                            stmt.execute("CREATE INDEX IF NOT EXISTS IDX_OrderItems_Item  ON OrderItems(ItemID)");
+
+                // Enforce: at most ONE ACTIVE relation per item (Deleted = FALSE)
+                            stmt.execute("""
+                  CREATE UNIQUE INDEX IF NOT EXISTS UQ_OrderItems_Item_Active
+                  ON OrderItems(ItemID, Deleted)
+                """);
 
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS ItemRead (
@@ -85,6 +105,5 @@ public final class DatabaseInitializer {
             throw new RuntimeException(e);
         }
     }
-
     private DatabaseInitializer() {}
 }

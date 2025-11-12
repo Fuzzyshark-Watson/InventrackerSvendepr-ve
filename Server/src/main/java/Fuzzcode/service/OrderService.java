@@ -18,6 +18,7 @@ public class OrderService {
 
     /* ===== Order lifecycle ===== */
     public Order createOrder(LocalDate createdDate, Integer customerId, Integer loggedById) {
+
         int id = orderDao.createOrder(createdDate, customerId, loggedById);
         return id > 0 ? orderDao.readOrder(id, true) : null;
     }
@@ -43,6 +44,10 @@ public class OrderService {
         return orderDao.updateOrderDates(orderId, start, end);
     }
     public boolean updateOrderDates(int orderId, LocalDate start, LocalDate end) {
+        if (start != null && end != null && end.isBefore(start)) {
+            LoggerHandler.log(LoggerHandler.Level.WARNING, "End date before start date: " + start + " > " + end);
+            return false;
+        }
         return orderDao.updateOrderDates(orderId, start, end);
     }
     public boolean updateOrderStartDate(int orderId, LocalDate start) {
@@ -51,10 +56,20 @@ public class OrderService {
     }
     public boolean updateOrderEndDate(int orderId, LocalDate end) {
         Order o = orderDao.readOrder(orderId, false);
+        if (o == null) return false;
+        if (o.startDate() != null && end != null && end.isBefore(o.startDate())) {
+            LoggerHandler.log(LoggerHandler.Level.WARNING, "End date before start date for order " + orderId);
+            return false;
+        }
         return orderDao.updateOrderEndDate(orderId, end);
     }
     public boolean softDeleteOrder(int orderId) {
         return orderDao.softDeleteOrder(orderId);
+    }
+    public boolean softDeleteOrder(int orderId, Fuzzcode.model.UserRole actorRole) {
+        if (actorRole != Fuzzcode.model.UserRole.ADMIN)
+            throw new SecurityException("Admin role required");
+        return softDeleteOrder(orderId);
     }
 
     /* ===== Items within an order (transactional) ===== */
