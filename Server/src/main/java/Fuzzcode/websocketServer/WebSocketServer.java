@@ -1,5 +1,6 @@
 package Fuzzcode.websocketServer;
 
+import Fuzzcode.db.ConnectionManager;
 import Fuzzcode.security.AuthContext;
 import Fuzzcode.security.JwtAuthenticator;
 import Fuzzcode.utilities.LoggerHandler;
@@ -7,6 +8,11 @@ import org.eclipse.jetty.websocket.api.Callback;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.*;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Date;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -52,7 +58,47 @@ public class WebSocketServer {
             }
             return;
         }
-
+        if (msg.equals("fetch : orders_full")) {
+            try (Connection conn = ConnectionManager.getConnection();
+                 PreparedStatement ps = conn.prepareStatement("""
+                    SELECT OrderID, CreatedDate, StartDate, EndDate, CustomerID, LoggedByID
+                    FROM Orders WHERE Deleted = FALSE
+                    """)) {
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String created = rs.getDate("CreatedDate").toString();
+                        Date start = rs.getDate("StartDate");
+                        Date end   = rs.getDate("EndDate");
+                        int cust   = rs.getInt("CustomerID");
+                        int logged = rs.getInt("LoggedByID");
+                        sendSafe(String.format("order:%d:%s:%s:%s:%d:%d",
+                                rs.getInt("OrderID"),
+                                created,
+                                start == null ? "" : start.toString(),
+                                end   == null ? "" : end.toString(),
+                                cust,
+                                logged));
+                    }
+                }
+                try (PreparedStatement ps2 = conn.prepareStatement("""
+                        SELECT oi.OrderID, i.ItemID, i.Position
+                        FROM OrderItems oi
+                        JOIN Items i ON i.ItemID = oi.ItemID
+                        WHERE oi.Deleted = FALSE AND i.Deleted = FALSE
+                        """)) {
+                    try (ResultSet rs2 = ps2.executeQuery()) {
+                        while (rs2.next()) {
+                            sendSafe(String.format("link:%d:%d:%s",
+                                    rs2.getInt("OrderID"),
+                                    rs2.getInt("ItemID"),
+                                    rs2.getString("Position")));
+                        }
+                    }
+                }
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        }
         // Normal echo (includes identity)
         sendSafe("echo@" + auth.subject() + ": " + msg);
     }

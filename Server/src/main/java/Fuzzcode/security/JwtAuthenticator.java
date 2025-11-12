@@ -1,9 +1,12 @@
 package Fuzzcode.security;
 
 import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.nimbusds.jose.proc.*;
 import com.nimbusds.jose.jwk.source.RemoteJWKSet;
+import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.nimbusds.jwt.proc.*;
 
@@ -107,5 +110,29 @@ public class JwtAuthenticator {
         });
         var cfg = new Config(issuer, audience, proc);
         return new JwtAuthenticator(Map.of(issuer, cfg));
+    }
+    public static String issueHmacTestToken(
+            String issuer,
+            String audience,
+            byte[] secret,
+            String subject,
+            String scope,
+            long ttlSeconds
+    ) throws Exception {
+        Date now = new Date();
+        Date exp = new Date(now.getTime() + ttlSeconds * 1000L);
+
+        JWTClaimsSet claims = new JWTClaimsSet.Builder()
+                .issuer(issuer)
+                .subject(subject)
+                .audience(Collections.singletonList(audience))
+                .claim("scope", scope)         // <-- string; your extractScopes() supports this
+                .issueTime(now)
+                .expirationTime(exp)
+                .build();
+
+        SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claims);
+        jwt.sign(new MACSigner(secret));
+        return jwt.serialize();
     }
 }

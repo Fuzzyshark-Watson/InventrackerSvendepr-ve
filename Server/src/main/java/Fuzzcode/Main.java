@@ -3,6 +3,8 @@ package Fuzzcode;
 import Fuzzcode.broker.BrokerHandler;
 import Fuzzcode.db.ConnectionManager;
 import Fuzzcode.db.DatabaseInitializer;
+import Fuzzcode.db.SampleDataSeeder;
+import Fuzzcode.security.JwtAuthenticator;
 import Fuzzcode.utilities.LoggerHandler;
 import Fuzzcode.utilities.MessageHandler;
 import Fuzzcode.websocketClient.WsClient;
@@ -12,6 +14,8 @@ import Fuzzcode.websocketServer.WsServerHandler;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -25,6 +29,7 @@ public class Main {
                 "root"
         );
         DatabaseInitializer.initSchema();
+        //SampleDataSeeder.seed();
         MessageHandler MesH = MessageHandler.getInstance();
         LoggerHandler.log("MessageHandler Initialized");
 
@@ -43,10 +48,22 @@ public class Main {
 
         // Start WebSocket Client with JWT token
         WsClient wsClient = new WsClient();
-        String jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzeXN0ZW0tY2xpZW50Iiwic3ViIjoic3lzdGVtLWNsaWVudCIsImF1ZCI6IndzLXNlcnZpY2UiLCJleHAiOjE3NjI3MTUxMTIsInNjb3BlIjoicmVhZCB3cml0ZSJ9.Ndl3ZSOTrTGsKwe8OszhOl1OH3YnBWT-aleyNQoZbDA";
+        byte[] SECRET = "e3f7a9c4b8d1f0a2c6e9d4b3f7a8c1e2d3f4b5a6c7d8e9f0a1b2c3d4e5f6a7b8"
+                .getBytes(StandardCharsets.UTF_8);
+
+        String token = JwtAuthenticator.issueHmacTestToken(
+                "system-client",
+                "ws-service",
+                SECRET,
+                "admin",
+                "admin",
+                3600
+        );
+
         Thread wsClientThread = new Thread(() -> {
             try {
-                wsClient.start("ws://localhost:8080/ws?token=" + jwtToken, new WsClientEndpoint());
+                wsClient.start("ws://localhost:8080/ws?token=" +
+                        URLEncoder.encode(token, StandardCharsets.UTF_8), new WsClientEndpoint());
                 wsClient.send("ping");
                 wsClient.stop();
                 System.out.println("WebSocket Client connected with JWT token.");
@@ -56,7 +73,7 @@ public class Main {
         }, "WebSocket-Client-Thread");
         wsClientThread.setDaemon(true);
         wsClientThread.start();
-        LoggerHandler.log("Websocket Client Initialized with JWT Token: " + jwtToken);
+        LoggerHandler.log("Websocket Client Initialized with JWT Token: " + token);
 
         // Shutdown control
         AtomicBoolean running = new AtomicBoolean(true);
