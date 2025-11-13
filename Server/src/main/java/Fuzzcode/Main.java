@@ -5,12 +5,14 @@ import Fuzzcode.db.ConnectionManager;
 import Fuzzcode.db.DatabaseInitializer;
 import Fuzzcode.db.SampleDataSeeder;
 import Fuzzcode.security.JwtAuthenticator;
+import Fuzzcode.ui.LoginWindow;
 import Fuzzcode.utilities.LoggerHandler;
 import Fuzzcode.utilities.MessageHandler;
 import Fuzzcode.websocketClient.WsClient;
 import Fuzzcode.websocketClient.WsClientEndpoint;
 import Fuzzcode.websocketServer.WsServerHandler;
 
+import javax.swing.*;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -22,58 +24,96 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class Main {
     public static void main(String[] args) throws Exception {
         LoggerHandler.log("=== START Main ====");
-        LoggerHandler.log("Connection Manager Initialized");
-        ConnectionManager.init(
-                "jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1",
-                "admin",
-                "root"
-        );
-        DatabaseInitializer.initSchema();
-        //SampleDataSeeder.seed();
+
+        try {
+            ConnectionManager.init(
+                    "jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1",
+                    "admin",
+                    "root"
+            );
+            DatabaseInitializer.initSchema();
+            LoggerHandler.log("Connection Manager Initialized");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            LoggerHandler.log(e);
+        }
+        try {
+            SampleDataSeeder.seed();
+        } catch (Exception e) {
+            e.printStackTrace();
+            LoggerHandler.log(e);
+        }
+
         MessageHandler MesH = MessageHandler.getInstance();
-        LoggerHandler.log("MessageHandler Initialized");
+        try {
+            MesH.startProcessing();
+            LoggerHandler.log("MessageHandler Initialized");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            LoggerHandler.log(e);
+        }
 
         // Start Broker (With Subscriber)
         BrokerHandler brokerHandler = new BrokerHandler();
-        brokerHandler.startBroker();
-        brokerHandler.startSubscriber("PC", "FXR90CBBF41/data/read");
-        LoggerHandler.log("BrokerHandler Initialized");
+        try {
+            brokerHandler.startBroker();
+            brokerHandler.startSubscriber("PC", "FXR90CBBF41/data/read");
+            LoggerHandler.log("BrokerHandler Initialized");
+        } catch (Exception e) {
+            e.printStackTrace();
+            LoggerHandler.log(e);
+
+            return;
+        }
 
         // Start WebSocket Server
         WsServerHandler wsServerHandler = new WsServerHandler();
         Thread wsServerThread = new Thread(wsServerHandler::bootWebsocket, "WebSocket-Server-Thread");
-        wsServerThread.setDaemon(true);
-        wsServerThread.start();
-        LoggerHandler.log("Websocket Server Initialized");
+        try {
+            wsServerThread.setDaemon(true);
+            wsServerThread.start();
+            LoggerHandler.log("Websocket Server Initialized");
+        } catch (Exception e) {
+            e.printStackTrace();
+            LoggerHandler.log(e);
+        }
+        LoggerHandler.outputReport();
 
         // Start WebSocket Client with JWT token
         WsClient wsClient = new WsClient();
-        byte[] SECRET = "e3f7a9c4b8d1f0a2c6e9d4b3f7a8c1e2d3f4b5a6c7d8e9f0a1b2c3d4e5f6a7b8"
-                .getBytes(StandardCharsets.UTF_8);
+        try {
+            byte[] SECRET = "e3f7a9c4b8d1f0a2c6e9d4b3f7a8c1e2d3f4b5a6c7d8e9f0a1b2c3d4e5f6a7b8"
+                    .getBytes(StandardCharsets.UTF_8);
 
-        String token = JwtAuthenticator.issueHmacTestToken(
-                "system-client",
-                "ws-service",
-                SECRET,
-                "admin",
-                "admin",
-                3600
-        );
+            String token = JwtAuthenticator.issueHmacTestToken(
+                    "system-client",
+                    "ws-service",
+                    SECRET,
+                    "admin",
+                    "admin",
+                    3600
+            );
+            Thread wsClientThread = new Thread(() -> {
+                try {
+                    wsClient.start("ws://localhost:8080/ws?token=" +
+                            URLEncoder.encode(token, StandardCharsets.UTF_8), new WsClientEndpoint());
+                    wsClient.send("ping");
+                    wsClient.stop();
+                    System.out.println("WebSocket Client connected with JWT token.");
+                } catch (Exception e) {
+                    System.err.println("WebSocket Client failed: " + e.getMessage());
+                }
+            }, "WebSocket-Client-Thread");
+            wsClientThread.setDaemon(true);
+            wsClientThread.start();
+            LoggerHandler.log("Websocket Client Initialized with JWT Token: " + token);
+        } catch (Exception e) {
+            e.printStackTrace();
+            LoggerHandler.log(e);
+        }
 
-        Thread wsClientThread = new Thread(() -> {
-            try {
-                wsClient.start("ws://localhost:8080/ws?token=" +
-                        URLEncoder.encode(token, StandardCharsets.UTF_8), new WsClientEndpoint());
-                wsClient.send("ping");
-                wsClient.stop();
-                System.out.println("WebSocket Client connected with JWT token.");
-            } catch (Exception e) {
-                System.err.println("WebSocket Client failed: " + e.getMessage());
-            }
-        }, "WebSocket-Client-Thread");
-        wsClientThread.setDaemon(true);
-        wsClientThread.start();
-        LoggerHandler.log("Websocket Client Initialized with JWT Token: " + token);
 
         // Shutdown control
         AtomicBoolean running = new AtomicBoolean(true);

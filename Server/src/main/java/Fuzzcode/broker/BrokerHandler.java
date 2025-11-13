@@ -24,8 +24,8 @@ public class BrokerHandler implements MqttCallback {
         LoggerHandler.log("=== START startBroker ===");
         Vertx vertx = Vertx.vertx();
         MqttServerOptions opts = new MqttServerOptions()
-                .setHost(HOST)   // e.g. "0.0.0.0"
-                .setPort(PORT);  // e.g. 1883
+                .setHost(HOST)
+                .setPort(PORT);
 
         MqttServer mqttServer = MqttServer.create(vertx, opts);
 
@@ -35,15 +35,14 @@ public class BrokerHandler implements MqttCallback {
                         LoggerHandler.log(LoggerHandler.Level.ERROR, "Broker exception: " + err.getMessage())
                 );
 
+        // Block until it actually starts or fails
         mqttServer.listen()
-                .onSuccess(srv -> {
-                    LoggerHandler.log("MQTT Broker started on tcp://" + HOST + ":" + PORT);
-                    LoggerHandler.log("=== END startBroker ===");
-                })
-                .onFailure(err -> {
-                    LoggerHandler.log(LoggerHandler.Level.ERROR, "MQTT Broker failed: " + err.getMessage());
-                    LoggerHandler.log("=== END startBroker ===");
-                });
+                .toCompletionStage()
+                .toCompletableFuture()
+                .join();
+
+        LoggerHandler.log("MQTT Broker started on tcp://" + HOST + ":" + PORT);
+        LoggerHandler.log("=== END startBroker ===");
     }
     private void handleClientConnection(MqttEndpoint endpoint) {
         LoggerHandler.log("=== START handleClientConnection ===");
@@ -76,7 +75,7 @@ public class BrokerHandler implements MqttCallback {
     }
     public void startSubscriber(String clientId, String topic) throws Exception {
         LoggerHandler.log("=== START startSubscriber ===");
-        client = new MqttClient("tcp://192.168.0.25:1883", clientId, null);
+        client = new MqttClient("tcp://" + HOST + ":" + PORT, clientId, null);
 
         MqttConnectOptions options = new MqttConnectOptions();
         options.setKeepAliveInterval(60);

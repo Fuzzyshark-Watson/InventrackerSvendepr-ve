@@ -63,6 +63,8 @@ public class MessageHandler {
                 LoggerHandler.log(LoggerHandler.Level.WARNING, "BROKER payload had no JSON: " + message);
                 return;
             }
+            System.out.println(message);
+
             String jsonPart = message.substring(brace);
 
             JsonNode root  = JSON.readTree(jsonPart);

@@ -274,7 +274,6 @@ public class LoginWindow extends JFrame {
             itemPosition.put(itemId, pos);
             refreshHomeCount(orderId);
             if (readsForOrderId != null && readsForOrderId == orderId) {
-                // add or update the row in reads table
                 upsertReadsRow(itemId, pos);
             }
         }
@@ -290,7 +289,6 @@ public class LoginWindow extends JFrame {
 
         private void setItemPosition(int itemId, String pos) {
             itemPosition.put(itemId, pos);
-            // Update whichever order has this item
             Integer owningOrder = null;
             for (var e : orderItems.entrySet()) {
                 if (e.getValue().contains(itemId)) { owningOrder = e.getKey(); break; }
@@ -303,7 +301,6 @@ public class LoginWindow extends JFrame {
             }
         }
         private void upsertReadsRow(int itemId, String pos) {
-            // itemId is unique per row in Reads
             for (int r = 0; r < readsTableModel.getRowCount(); r++) {
                 if (((Integer) readsTableModel.getValueAt(r, 0)) == itemId) {
                     readsTableModel.setValueAt(pos, r, 1);
