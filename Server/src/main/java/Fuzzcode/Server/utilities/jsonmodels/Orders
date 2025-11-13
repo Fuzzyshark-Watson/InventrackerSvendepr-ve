@@ -1,0 +1,92 @@
+GetAllOrders
+    Outbound: Order.List
+        {
+          "type": "Order.List",
+          "payload": {}
+        }
+    Inbound: Order.Snapshot
+        {
+          "type": "Order.Snapshot",
+          "payload": {
+            "orders": [
+              {
+                "orderId": 1,
+                "createdDate": "2025-02-01",
+                "startDate": "2025-02-02",
+                "endDate": "2025-02-03",
+                "customerId": 10,
+                "loggedById": 3,
+                "deleted": false
+              }
+              // ...
+            ]
+          }
+        }
+CreateOrder
+    Outbound: Order.Create
+        {
+          "type": "Order.Create",
+          "payload": {
+            "createdDate": "2025-02-10",
+            "startDate": "2025-02-11",
+            "endDate": "2025-02-12",
+            "customerId": 10,
+            "loggedById": 3
+          }
+        }
+    Inbound: Order.Upsert
+        {
+          "type": "Order.Upsert",
+          "payload": {
+            "order": {
+              "orderId": 42,
+              "createdDate": "2025-02-10",
+              "startDate": "2025-02-11",
+              "endDate": "2025-02-12",
+              "customerId": 10,
+              "loggedById": 3,
+              "deleted": false
+            }
+          }
+        }
+UpdateOrder
+    Outbound: Order.Update
+        {
+          "type": "Order.Update",
+          "payload": {
+            "orderId": 42,
+            "createdDate": "2025-02-10",
+            "startDate": "2025-02-15",
+            "endDate": "2025-02-16",
+            "customerId": 10,
+            "loggedById": 3
+          }
+        }
+    Inbound: Order.Upsert
+        {
+          "type": "Order.Upsert",
+          "payload": {
+            "order": { ...updated order... }
+          }
+        }
+
+DeleteOrder
+    Outbound: Order.Delete
+        {
+          "type": "Order.Delete",
+          "payload": {
+            "orderId": 42
+          }
+        }
+
+    Inbound: Order.Deleted
+        {
+          "type": "Order.Upsert",
+          "payload": {
+            "order": {
+              "orderId": 42,
+              "...": "...",
+              "deleted": true
+            }
+          }
+        }

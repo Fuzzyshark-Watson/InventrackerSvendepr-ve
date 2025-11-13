@@ -1,0 +1,82 @@
+GetAllItems
+	Outbound: Item.List
+		{
+		  "type": "Item.List",
+		  "payload": {}
+		}
+
+	Inbound: Item.Snapshot
+		{
+		  "type": "Item.Snapshot",
+		  "payload": {
+		    "orders": [
+		        {
+                "tagId": "ABC123",
+                "position": "HOME",
+                "isOverdue": false
+          		}
+                // ...
+            ]
+		  }
+		}
+
+
+CreateItem
+	Outbound: Item.Create
+		{
+		  "type": "Item.Create",
+		  "payload": {
+			"tagId": "ABC123",
+			"position": "HOME",
+			"isOverdue": false
+		  }
+		}
+
+	Inbound: Item.Upsert
+		{
+		  "type": "Item.Upsert",
+		  "payload": {
+			"tagId": "ABC123",
+			"position": "HOME",
+			"isOverdue": false
+		  }
+		}
+
+
+UpdateItem
+	Outbound: Item.Update
+		{
+		  "type": "Item.Update",
+		  "payload": {
+			"itemId": 100,
+			"position": "DELIVERED",
+			"isOverdue": true
+		  }
+		}
+
+	Inbound: Item.Upsert
+		{
+		  "type": "Item.Upsert",
+		  "payload": {
+			"itemId": 100,
+			"position": "DELIVERED",
+			"isOverdue": true
+			}
+		  }
+
+
+DeleteItem
+	Outbound: Item.Delete
+		{
+		  "type": "Item.Delete",
+		  "payload": {
+			"itemId": 100
+		  }
+		}
+
+	Inbound: Item.Deleted
+		{
+		  "type": "Item.Deleted",
+		  "payload": {
+			"itemId": 100
+		}

@@ -1,0 +1,78 @@
+GetAllItemReads
+	Outbound: ItemRead.List
+		{
+		  "type": "ItemRead.List",
+		  "payload": {}
+		}
+	Inbound: ItemRead.Snapshot
+		{
+		  "type": "ItemRead.Snapshot",
+		  "payload": {
+			"orders": [
+			  {
+                "tagId": "ABC123",
+                "readTime": "2025-02-02T09:32:10Z"
+			  }
+			  // ...
+			]
+		  }
+		}
+
+
+CreateItemRead
+	Outbound: ItemRead.Create
+		{
+		  "type": "ItemRead.Create",
+		  "payload": {
+			"tagId": "ABC123",
+			"readTime": "2025-02-02T09:32:10Z"
+		  }
+		}
+
+	Inbound: ItemRead.Upsert
+		{
+		  "type": "ItemRead.Upsert",
+		  "payload": {
+			"readId": 1,
+			"tagId": "ABC123",
+			"readTime": "2025-02-02T10:00:00Z"
+		  }
+		}
+
+UpdateItemRead
+	Outbound: ItemRead.Update
+		{
+		  "type": "ItemRead.Update",
+		  "payload": {
+			"readId": 1,
+			"tagId": "ABC123",
+			"readTime": "2025-02-02T10:00:00Z"
+		  }
+		}
+
+	Inbound: ItemRead.Upsert
+		{
+		  "type": "ItemRead.Upsert",
+		  "payload": {
+			"readId": 1,
+			"tagId": "ABC123",
+			"readTime": "2025-02-02T10:00:00Z"
+		  }
+		}
+
+DeleteItemRead
+	Outbound: ItemRead.Delete
+		{
+		  "type": "ItemRead.Delete",
+		  "payload": {
+			"readId": 1
+		  }
+		}
+
+	Inbound: ItemRead.Deleted
+	    {
+          "type": "ItemRead.Deleted",
+		  "payload": {
+			"readId": 1
+		  }
+        }

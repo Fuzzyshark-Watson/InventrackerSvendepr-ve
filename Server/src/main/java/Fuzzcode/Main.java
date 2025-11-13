@@ -1,33 +1,31 @@
 package Fuzzcode;
 
-import Fuzzcode.broker.BrokerHandler;
-import Fuzzcode.db.ConnectionManager;
-import Fuzzcode.db.DatabaseInitializer;
-import Fuzzcode.db.SampleDataSeeder;
-import Fuzzcode.security.JwtAuthenticator;
-import Fuzzcode.ui.LoginWindow;
-import Fuzzcode.utilities.LoggerHandler;
-import Fuzzcode.utilities.MessageHandler;
-import Fuzzcode.websocketClient.WsClient;
-import Fuzzcode.websocketClient.WsClientEndpoint;
-import Fuzzcode.websocketServer.WsServerHandler;
+import Fuzzcode.Server.broker.BrokerHandler;
+import Fuzzcode.Server.db.ConnectionManager;
+import Fuzzcode.Server.db.DatabaseInitializer;
+import Fuzzcode.Client.ui.Components.MainUI;
+import Fuzzcode.Client.ui.styles.Styles;
+import Fuzzcode.Server.utilities.LoggerHandler;
+import Fuzzcode.Server.utilities.MessageHandler;
+import Fuzzcode.Server.websocketServer.WsServerHandler;
 
 import javax.swing.*;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Main {
+
+
     public static void main(String[] args) throws Exception {
+
         LoggerHandler.log("=== START Main ====");
 
         try {
             ConnectionManager.init(
-                    "jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1",
+                    "jdbc:h2:file:./data/prod_db;MODE=MySQL;AUTO_SERVER=TRUE",
                     "admin",
                     "root"
             );
@@ -38,8 +36,8 @@ public class Main {
             e.printStackTrace();
             LoggerHandler.log(e);
         }
-        try {
-            SampleDataSeeder.seed();
+       try {
+            //SampleDataSeeder.seed();
         } catch (Exception e) {
             e.printStackTrace();
             LoggerHandler.log(e);
@@ -55,7 +53,6 @@ public class Main {
             LoggerHandler.log(e);
         }
 
-        // Start Broker (With Subscriber)
         BrokerHandler brokerHandler = new BrokerHandler();
         try {
             brokerHandler.startBroker();
@@ -68,7 +65,6 @@ public class Main {
             return;
         }
 
-        // Start WebSocket Server
         WsServerHandler wsServerHandler = new WsServerHandler();
         Thread wsServerThread = new Thread(wsServerHandler::bootWebsocket, "WebSocket-Server-Thread");
         try {
@@ -81,45 +77,12 @@ public class Main {
         }
         LoggerHandler.outputReport();
 
-        // Start WebSocket Client with JWT token
-        WsClient wsClient = new WsClient();
-        try {
-            byte[] SECRET = "e3f7a9c4b8d1f0a2c6e9d4b3f7a8c1e2d3f4b5a6c7d8e9f0a1b2c3d4e5f6a7b8"
-                    .getBytes(StandardCharsets.UTF_8);
+        Styles.apply();
+        SwingUtilities.invokeLater(() -> new MainUI().startLogin());
 
-            String token = JwtAuthenticator.issueHmacTestToken(
-                    "system-client",
-                    "ws-service",
-                    SECRET,
-                    "admin",
-                    "admin",
-                    3600
-            );
-            Thread wsClientThread = new Thread(() -> {
-                try {
-                    wsClient.start("ws://localhost:8080/ws?token=" +
-                            URLEncoder.encode(token, StandardCharsets.UTF_8), new WsClientEndpoint());
-                    wsClient.send("ping");
-                    wsClient.stop();
-                    System.out.println("WebSocket Client connected with JWT token.");
-                } catch (Exception e) {
-                    System.err.println("WebSocket Client failed: " + e.getMessage());
-                }
-            }, "WebSocket-Client-Thread");
-            wsClientThread.setDaemon(true);
-            wsClientThread.start();
-            LoggerHandler.log("Websocket Client Initialized with JWT Token: " + token);
-        } catch (Exception e) {
-            e.printStackTrace();
-            LoggerHandler.log(e);
-        }
-
-
-        // Shutdown control
         AtomicBoolean running = new AtomicBoolean(true);
         CountDownLatch stopSignal = new CountDownLatch(1);
 
-        // Console listener for ENTER
         Thread stopper = new Thread(() -> {
             System.out.println("Server running. Press ENTER to stop.");
             try (BufferedReader br = new BufferedReader(new InputStreamReader(System.in))) {
@@ -152,7 +115,7 @@ public class Main {
 
         try {
             System.out.println("Stopping WebSocket Client...");
-            wsClient.close();
+            //wsClient.close();
         } catch (Throwable t) {
             LoggerHandler.log("WS Client shutdown error: " + t.getMessage());
         }
@@ -179,5 +142,8 @@ public class Main {
 
         LoggerHandler.outputReport();
         System.out.println("Stopped cleanly.");
+    }
+    public void initializeUI(){
+
     }
 }

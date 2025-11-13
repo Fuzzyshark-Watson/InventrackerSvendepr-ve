@@ -1,12 +1,12 @@
-import Fuzzcode.security.AuthContext;
-import Fuzzcode.security.JwtAuthenticator;
-import Fuzzcode.utilities.LoggerHandler;
-import Fuzzcode.websocketServer.WebSocketServer;
-import Fuzzcode.db.ConnectionManager;
-import Fuzzcode.db.DatabaseInitializer;
-import Fuzzcode.model.*;
-import Fuzzcode.model.Order;
-import Fuzzcode.service.*;
+import Fuzzcode.Server.model.*;
+import Fuzzcode.Server.model.Order;
+import Fuzzcode.Server.security.AuthContext;
+import Fuzzcode.Server.security.JwtAuthenticator;
+import Fuzzcode.Server.service.*;
+import Fuzzcode.Server.utilities.LoggerHandler;
+import Fuzzcode.Server.websocketServer.WebSocketServer;
+import Fuzzcode.Server.db.ConnectionManager;
+import Fuzzcode.Server.db.DatabaseInitializer;
 
 
 import com.nimbusds.jose.JOSEException;
@@ -17,7 +17,7 @@ import io.vertx.mqtt.MqttServerOptions;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.websocket.api.Session;
-
+import org.eclipse.jetty.websocket.api.Callback;
 
 import org.eclipse.jetty.websocket.client.WebSocketClient;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
@@ -25,6 +25,9 @@ import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.junit.jupiter.api.*;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -1045,13 +1048,11 @@ public class DBEngineTest {
             jwt.sign(new com.nimbusds.jose.crypto.MACSigner(SECRET));
             return jwt.serialize();
         }
-
         private URI wsUri(String token) {
             String q = (token == null || token.isBlank()) ? "" :
                     "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
             return URI.create("ws://localhost:" + port + "/ws" + q);
         }
-
         /** Probe that doesn’t hang on errors. */
         public static class WsProbe extends Session.Listener.Abstract implements Session.Listener.AutoDemanding {
             final CountDownLatch openLatch    = new CountDownLatch(1);
@@ -1221,8 +1222,7 @@ public class DBEngineTest {
         }
     }
     @Nested
-    class LOG
-    {
+    class LOG {
         @AfterEach
         void tearDown() {
             // make sure we leave global state tidy for other tests
@@ -1231,15 +1231,15 @@ public class DBEngineTest {
         @Test // LOG-001 part A: "Logger outputs"
         void loggerOutputsMessages() {
             // Arrange
-            Fuzzcode.utilities.LoggerHandler.log("hello");
-            Fuzzcode.utilities.LoggerHandler.log(Fuzzcode.utilities.LoggerHandler.Level.WARNING, "be careful");
+            LoggerHandler.log("hello");
+            LoggerHandler.log(LoggerHandler.Level.WARNING, "be careful");
 
             // Capture System.out
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             System.setOut(new PrintStream(baos));
 
             // Act
-            Fuzzcode.utilities.LoggerHandler.outputReport();
+            LoggerHandler.outputReport();
 
             // Assert
             String out = baos.toString();
@@ -1258,7 +1258,7 @@ public class DBEngineTest {
             System.setOut(new PrintStream(baos));
 
             // Act
-            Fuzzcode.utilities.LoggerHandler.outputReport();
+            LoggerHandler.outputReport();
 
             // Assert: only header/footer, no previous lines
             String out = baos.toString();
@@ -1269,18 +1269,17 @@ public class DBEngineTest {
         }
     }
     @Nested
-    class SEC
-    {
+    class SEC {
         @Test
         void passwordHashingEnforced() throws Exception {
             ConnectionManager.init("jdbc:h2:mem:sec_test;MODE=MySQL;DB_CLOSE_DELAY=0", "admin", "root");
             DatabaseInitializer.initSchema();
-            var users = new Fuzzcode.service.UserService();
+            var users = new UserService();
 
             String username = "alice";
             String password = "secret123";
-            Integer id = users.register(username, password, Fuzzcode.model.UserRole.USER);
-            assertNotNull(id);
+            AppUser user = users.register(username, password, UserRole.USER);
+            assertNotNull(user);
 
             try (var c = ConnectionManager.getConnection();
                  var ps = c.prepareStatement("SELECT Username, PasswordHash, Salt FROM Users WHERE Username=?")) {
@@ -1307,24 +1306,561 @@ public class DBEngineTest {
             ConnectionManager.init("jdbc:h2:mem:sec2;MODE=MySQL;DB_CLOSE_DELAY=0", "admin", "root");
             DatabaseInitializer.initSchema();
 
-            var personService = new Fuzzcode.service.PersonService();
-            var orderService  = new Fuzzcode.service.OrderService();
+            var personService = new PersonService();
+            var orderService  = new OrderService();
 
-            var customer = personService.createPerson("Cust", Fuzzcode.model.PersonRole.CUSTOMER);
-            var logger   = personService.createPerson("Logger", Fuzzcode.model.PersonRole.USER);
+            var customer = personService.createPerson("Cust", PersonRole.CUSTOMER);
+            var logger   = personService.createPerson("Logger", PersonRole.USER);
             var order    = orderService.createOrder(java.time.LocalDate.now(), customer.personId(), logger.personId());
             assertNotNull(order);
 
             assertThrows(SecurityException.class,
-                    () -> orderService.softDeleteOrder(order.orderId(), Fuzzcode.model.UserRole.USER));
+                    () -> orderService.softDeleteOrder(order.orderId(), UserRole.USER));
 
-            assertTrue(orderService.softDeleteOrder(order.orderId(), Fuzzcode.model.UserRole.ADMIN));
+            assertTrue(orderService.softDeleteOrder(order.orderId(), UserRole.ADMIN));
 
             assertNull(orderService.getOrder(order.orderId()));
             var incl = orderService.getOrder(order.orderId(), true);
             assertNotNull(incl);
             assertTrue(incl.deleted());
         }
+    }
+    @Nested
+    class TransPortLayer {
+        private static final ObjectMapper JSON = new ObjectMapper();
+        private Server server;
+        private ServerConnector connector;   // <— use the field
+        private int port;
+        private WebSocketClient client;
+        private JwtAuthenticator authenticator;
+
+        private static final String ISS = "test-issuer";
+        private static final String AUD = "ws-service";
+        static final byte[] SECRET =
+                "0123456789ABCDEF0123456789ABCDEF".getBytes(StandardCharsets.UTF_8);
+        /** Build a valid HS256 token for tests. */
+        String FakeJWTToken() throws JOSEException {
+            var now = new java.util.Date();
+            var claims = new com.nimbusds.jwt.JWTClaimsSet.Builder()
+                    .issuer(ISS)
+                    .audience(AUD)
+                    .subject("alice")
+                    .issueTime(now)
+                    .expirationTime(new java.util.Date(now.getTime() + 3600_000)) // +1h
+                    .claim("scope", "ws:connect")
+                    .build();
+
+            var jwt = new com.nimbusds.jwt.SignedJWT(
+                    new com.nimbusds.jose.JWSHeader(com.nimbusds.jose.JWSAlgorithm.HS256),
+                    claims
+            );
+            jwt.sign(new com.nimbusds.jose.crypto.MACSigner(SECRET));
+            return jwt.serialize();
+        }
+
+        public static class WsRoundtripProbe extends Session.Listener.Abstract
+                implements Session.Listener.AutoDemanding {
+
+            final CountDownLatch openLatch     = new CountDownLatch(1);
+            final CountDownLatch greetingLatch = new CountDownLatch(1);
+            final CountDownLatch replyLatch    = new CountDownLatch(1);
+
+            volatile Session session;
+            volatile String greeting;      // "hello alice"
+            volatile String businessReply; // first protocol reply after greeting
+
+            private int msgCount = 0;
+
+            @Override
+            public void onWebSocketOpen(Session session) {
+                super.onWebSocketOpen(session);
+                this.session = session;
+                openLatch.countDown();
+            }
+
+            @Override
+            public void onWebSocketText(String message) {
+                msgCount++;
+                if (msgCount == 1) {
+                    greeting = message;
+                    greetingLatch.countDown();
+                } else if (msgCount == 2) {
+                    businessReply = message;
+                    replyLatch.countDown();
+                }
+            }
+
+            @Override
+            public void onWebSocketError(Throwable cause) {
+                openLatch.countDown();
+                greetingLatch.countDown();
+                replyLatch.countDown();
+            }
+
+            public Session session() { return session; }
+
+            public String awaitBusinessReply(long timeoutMillis) throws InterruptedException {
+                if (!replyLatch.await(timeoutMillis, TimeUnit.MILLISECONDS)) {
+                    throw new AssertionError("Timed out waiting for business reply");
+                }
+                return businessReply;
+            }
+        }
+        private WsRoundtripProbe openAuthedSession() throws Exception {
+            String token = FakeJWTToken();
+            WsRoundtripProbe probe = new WsRoundtripProbe();
+
+            client.connect(probe, wsUri(token)).get(5, TimeUnit.SECONDS);
+
+            assertTrue(probe.openLatch.await(2, TimeUnit.SECONDS), "WebSocket did not open");
+            assertTrue(probe.greetingLatch.await(2, TimeUnit.SECONDS), "Server did not send greeting");
+
+            assertEquals("hello alice", probe.greeting, "Expected greeting on open");
+            return probe;
+        }
+
+        private URI wsUri(String token) {
+            String q = (token == null || token.isBlank()) ? "" :
+                    "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+            return URI.create("ws://localhost:" + port + "/ws" + q);
+        }
+
+        @BeforeEach
+        void setUp() throws Exception {
+            LoggerHandler.log("=== START setup ===");
+            authenticator = JwtAuthenticator.buildHmacForTests(ISS, AUD, SECRET);
+
+            // ---- DB init for WS tests ----
+            ConnectionManager.init(
+                    "jdbc:h2:mem:ws_test;MODE=MySQL;DB_CLOSE_DELAY=-1",
+                    "admin",
+                    "root"
+            );
+            DatabaseInitializer.initSchema();
+            LoggerHandler.log("Schema initialized for WS tests");
+
+            server = new Server();
+            connector = new ServerConnector(server);
+            connector.setPort(0);
+            server.addConnector(connector);
+
+            var context = new org.eclipse.jetty.ee10.servlet.ServletContextHandler();
+            context.setContextPath("/");
+            server.setHandler(context);
+
+            org.eclipse.jetty.ee10.websocket.server.config.JettyWebSocketServletContainerInitializer.configure(
+                    context,
+                    (sc, container) -> container.addMapping("/ws", (req, res) -> {
+                        String token = java.util.Optional.ofNullable(req.getParameterMap().get("token"))
+                                .flatMap(list -> list.stream().findFirst())
+                                .orElse("");
+
+                        if (token.isBlank()) {
+                            try { res.sendForbidden("Missing token"); } catch (Exception ignore) {}
+                            return null;
+                        }
+
+                        try {
+                            AuthContext auth = authenticator.verify(token);
+                            return new WebSocketServer(auth); // your @WebSocket endpoint
+                        } catch (Exception e) {
+                            try { res.sendForbidden("Invalid token"); } catch (Exception ignore) {}
+                            return null;
+                        }
+                    })
+            );
+
+            server.start();
+            port = connector.getLocalPort();
+
+            client = new WebSocketClient();
+            client.start();
+            LoggerHandler.log("=== END setup ===");
+        }
+        @Test
+        void itemCreate_roundtrip() throws Exception {
+            WsRoundtripProbe probe = openAuthedSession();
+
+            String requestJson = """
+        {
+          "type": "Item.Create",
+          "payload": {
+            "tagId": "ABC123",
+            "position": "HOME",
+            "isOverdue": false
+          }
+        }
+        """;
+
+            String wire = "Item.Create\n" + requestJson;
+
+            // Jetty 12+ Session API: must provide a Callback
+            probe.session().sendText(wire, Callback.NOOP);
+
+            String reply = probe.awaitBusinessReply(2_000);
+            assertTrue(reply.startsWith("Item.Upsert"), "Expected Item.Upsert but got: " + reply);
+
+            int brace = reply.indexOf('{');
+            assertTrue(brace > 0, "No JSON in reply: " + reply);
+
+            String jsonPart = reply.substring(brace);
+            JsonNode root = JSON.readTree(jsonPart);
+
+            assertEquals("Item.Upsert", root.path("type").asText());
+            JsonNode payload = root.path("payload");
+            assertEquals("ABC123", payload.path("tagId").asText());
+            assertEquals("HOME", payload.path("position").asText());
+            assertFalse(payload.path("isOverdue").asBoolean());
+            assertTrue(payload.has("itemId"), "Upsert payload should contain itemId");
+        }
+
+        // ORDER
+        private Order seedOrder() {
+            OrderService orderService = new OrderService();
+            return orderService.createOrder(java.time.LocalDate.now(), null, null);
+        }
+        @Test
+        void orderCreate_roundtrip() throws Exception {
+            WsRoundtripProbe probe = openAuthedSession();
+
+            String requestJson = """
+        {
+          "type": "Order.Create",
+          "payload": {
+            "createdDate": "2025-02-10",
+            "startDate": "2025-02-11",
+            "endDate": "2025-02-12",
+            "customerId": null,
+            "loggedById": null
+          }
+        }
+        """;
+
+            String wire = "Order.Create\n" + requestJson;
+            probe.session().sendText(wire, Callback.NOOP);
+
+            String reply = probe.awaitBusinessReply(2_000);
+            assertTrue(reply.startsWith("Order.Upsert"), "Expected Order.Upsert but got: " + reply);
+
+            int brace = reply.indexOf('{');
+            String jsonPart = reply.substring(brace);
+            JsonNode root = JSON.readTree(jsonPart);
+
+            assertEquals("Order.Upsert", root.path("type").asText());
+            JsonNode order = root.path("payload").path("order");
+            assertTrue(order.has("orderId"));
+            assertEquals("2025-02-10", order.path("createdDate").asText());
+            assertEquals("2025-02-11", order.path("startDate").asText());
+            assertEquals("2025-02-12", order.path("endDate").asText());
+            assertFalse(order.path("deleted").asBoolean());
+        }
+        @Test
+        void orderList_roundtrip() throws Exception {
+            // Seed couple of orders
+            OrderService orderService = new OrderService();
+            orderService.createOrder(java.time.LocalDate.of(2025, 2, 10), null, null);
+            orderService.createOrder(java.time.LocalDate.of(2025, 2, 11), null, null);
+
+            WsRoundtripProbe probe = openAuthedSession();
+
+            String requestJson = """
+        {
+          "type": "Order.List",
+          "payload": {}
+        }
+        """;
+
+            String wire = "Order.List\n" + requestJson;
+            probe.session().sendText(wire, Callback.NOOP);
+
+            String reply = probe.awaitBusinessReply(2_000);
+            assertTrue(reply.startsWith("Order.Snapshot"), "Expected Order.Snapshot but got: " + reply);
+
+            int brace = reply.indexOf('{');
+            String jsonPart = reply.substring(brace);
+            JsonNode root = JSON.readTree(jsonPart);
+
+            assertEquals("Order.Snapshot", root.path("type").asText());
+            JsonNode orders = root.path("payload").path("orders");
+            assertTrue(orders.isArray());
+            assertTrue(orders.size() >= 2);
+        }
+        @Test
+        void orderItemCreate_roundtrip() throws Exception {
+            OrderService orderService = new OrderService();
+            ItemService itemService   = new ItemService();
+
+            Order order = orderService.createOrder(java.time.LocalDate.now(), null, null);
+            Item item   = itemService.createItem("OI-TAG-1", Position.HOME, false);
+
+            WsRoundtripProbe probe = openAuthedSession();
+
+            String reqJson = """
+        {
+          "type": "OrderItem.Create",
+          "payload": {
+            "orderId": %d,
+            "itemId": %d
+          }
+        }
+        """.formatted(order.orderId(), item.itemId());
+
+            String wire = "OrderItem.Create\n" + reqJson;
+            probe.session().sendText(wire, Callback.NOOP);
+
+            String reply = probe.awaitBusinessReply(2_000);
+            assertTrue(reply.startsWith("OrderItem.Upsert"), "Expected OrderItem.Upsert but got: " + reply);
+
+            int brace = reply.indexOf('{');
+            String jsonPart = reply.substring(brace);
+            JsonNode root = JSON.readTree(jsonPart);
+
+            assertEquals("OrderItem.Upsert", root.path("type").asText());
+            JsonNode payload = root.path("payload");
+            assertEquals(order.orderId(), payload.path("orderId").asInt());
+            assertEquals(item.itemId(), payload.path("itemId").asInt());
+            assertFalse(payload.path("deleted").asBoolean());
+        }
+        @Test
+        void orderItemList_roundtrip() throws Exception {
+            // Seed: 1 order, 2 items, 2 relations
+            OrderService orderService = new OrderService();
+            ItemService itemService   = new ItemService();
+            OrderItemService orderItemService = new OrderItemService();
+
+            Order order = orderService.createOrder(java.time.LocalDate.now(), null, null);
+            Item i1 = itemService.createItem("LIST-TAG-1", Position.HOME, false);
+            Item i2 = itemService.createItem("LIST-TAG-2", Position.HOME, false);
+
+            orderItemService.assignItemToOrder(i1.itemId(), order.orderId());
+            orderItemService.assignItemToOrder(i2.itemId(), order.orderId());
+
+            WsRoundtripProbe probe = openAuthedSession();
+
+            String reqJson = """
+        {
+          "type": "OrderItem.List",
+          "payload": {}
+        }
+        """;
+
+            String wire = "OrderItem.List\n" + reqJson;
+            probe.session().sendText(wire, Callback.NOOP);
+
+            String reply = probe.awaitBusinessReply(2_000);
+            assertTrue(reply.startsWith("OrderItem.Snapshot"), "Expected OrderItem.Snapshot but got: " + reply);
+
+            int brace = reply.indexOf('{');
+            JsonNode root = JSON.readTree(reply.substring(brace));
+
+            assertEquals("OrderItem.Snapshot", root.path("type").asText());
+            JsonNode orders = root.path("payload").path("orders");
+            assertTrue(orders.isArray());
+            assertTrue(orders.size() >= 2);
+        }
+        @Test
+        void orderItem_listByOrder_roundtrip() throws Exception {
+            OrderService orderService = new OrderService();
+            ItemService itemService   = new ItemService();
+            OrderItemService orderItemService = new OrderItemService();
+
+            Order order = orderService.createOrder(java.time.LocalDate.now(), null, null);
+            Item item   = itemService.createItem("TAG-ORDER-1", Position.HOME, false);
+            orderItemService.assignItemToOrder(item.itemId(), order.orderId());
+
+            WsRoundtripProbe probe = openAuthedSession();
+
+            String reqJson = """
+        {
+          "type": "OrderItem.ListByOrder",
+          "payload": {
+            "orderId": %d
+          }
+        }
+        """.formatted(order.orderId());
+
+            String wire = "OrderItem.ListByOrder\n" + reqJson;
+            probe.session().sendText(wire, Callback.NOOP);
+
+            String reply = probe.awaitBusinessReply(2_000);
+            assertTrue(reply.startsWith("OrderItem.SnapshotForOrder"),
+                    "Expected OrderItem.SnapshotForOrder but got: " + reply);
+
+            int brace = reply.indexOf('{');
+            JsonNode root = JSON.readTree(reply.substring(brace));
+
+            assertEquals("OrderItem.SnapshotForOrder", root.path("type").asText());
+            JsonNode payload = root.path("payload");
+            assertEquals(order.orderId(), payload.path("orderId").asInt());
+
+            JsonNode items = payload.path("items");
+            assertTrue(items.isArray());
+            assertTrue(items.size() >= 1);
+        }
+        @Test
+        void orderItem_positionCounts_roundtrip() throws Exception {
+            OrderService orderService = new OrderService();
+            ItemService itemService   = new ItemService();
+            OrderItemService orderItemService = new OrderItemService();
+
+            Order order = orderService.createOrder(java.time.LocalDate.now(), null, null);
+
+            Item i1 = itemService.createItem("POS-1", Position.HOME, false);
+            Item i2 = itemService.createItem("POS-2", Position.DELIVERED, false);
+            Item i3 = itemService.createItem("POS-3", Position.HOME, false);
+
+            orderItemService.assignItemToOrder(i1.itemId(), order.orderId());
+            orderItemService.assignItemToOrder(i2.itemId(), order.orderId());
+            orderItemService.assignItemToOrder(i3.itemId(), order.orderId());
+
+            WsRoundtripProbe probe = openAuthedSession();
+
+            String reqJson = """
+        {
+          "type": "OrderItem.PositionCounts",
+          "payload": {
+            "orderId": %d
+          }
+        }
+        """.formatted(order.orderId());
+
+            String wire = "OrderItem.PositionCounts\n" + reqJson;
+            probe.session().sendText(wire, Callback.NOOP);
+
+            String reply = probe.awaitBusinessReply(2_000);
+            assertTrue(reply.startsWith("OrderItem.PositionCounts"),
+                    "Expected OrderItem.PositionCounts but got: " + reply);
+
+            int brace = reply.indexOf('{');
+            JsonNode root = JSON.readTree(reply.substring(brace));
+
+            assertEquals("OrderItem.PositionCounts", root.path("type").asText());
+            JsonNode counts = root.path("payload").path("counts");
+            assertEquals(2, counts.path("HOME").asInt());
+            assertEquals(1, counts.path("DELIVERED").asInt());
+        }
+        @Test
+        void itemReadCreate_roundtrip() throws Exception {
+            ItemService itemService = new ItemService();
+            Item item = itemService.createItem("READ-TAG-1", Position.HOME, false);
+
+            WsRoundtripProbe probe = openAuthedSession();
+
+            String reqJson = """
+        {
+          "type": "ItemRead.Create",
+          "payload": {
+            "tagId": "%s",
+            "readTime": "2025-02-02T09:32:10Z"
+          }
+        }
+        """.formatted(item.tagId());
+
+            String wire = "ItemRead.Create\n" + reqJson;
+            probe.session().sendText(wire, Callback.NOOP);
+
+            String reply = probe.awaitBusinessReply(2_000);
+            assertTrue(reply.startsWith("ItemRead.Upsert"), "Expected ItemRead.Upsert but got: " + reply);
+
+            int brace = reply.indexOf('{');
+            JsonNode root = JSON.readTree(reply.substring(brace));
+
+            assertEquals("ItemRead.Upsert", root.path("type").asText());
+            JsonNode payload = root.path("payload");
+            assertTrue(payload.has("readId"));
+            assertEquals(item.tagId(), payload.path("tagId").asText());
+            assertEquals("2025-02-02T09:32:10Z", payload.path("readTime").asText());
+        }
+        @Test
+        void itemRead_listByItem_roundtrip() throws Exception {
+            ItemService itemService       = new ItemService();
+            ItemReadService itemReadService = new ItemReadService();
+
+            Item item = itemService.createItem("READ-TAG-2", Position.HOME, false);
+
+            itemReadService.recordScan(item.tagId(), "2025-02-02T09:32:10Z");
+            itemReadService.recordScan(item.tagId(), "2025-02-03T10:00:00Z");
+
+            WsRoundtripProbe probe = openAuthedSession();
+
+            String reqJson = """
+        {
+          "type": "ItemRead.ListByItem",
+          "payload": {
+            "itemId": %d,
+            "from": "2025-02-01T00:00:00Z",
+            "to":   "2025-02-10T23:59:59Z"
+          }
+        }
+        """.formatted(item.itemId());
+
+            String wire = "ItemRead.ListByItem\n" + reqJson;
+            probe.session().sendText(wire, Callback.NOOP);
+
+            String reply = probe.awaitBusinessReply(2_000);
+            assertTrue(reply.startsWith("ItemRead.SnapshotForItem"),
+                    "Expected ItemRead.SnapshotForItem but got: " + reply);
+
+            int brace = reply.indexOf('{');
+            JsonNode root = JSON.readTree(reply.substring(brace));
+
+            assertEquals("ItemRead.SnapshotForItem", root.path("type").asText());
+            JsonNode reads = root.path("payload").path("reads");
+            assertTrue(reads.isArray());
+            assertTrue(reads.size() >= 2);
+        }
+        @Test
+        void itemList_roundtrip() throws Exception {
+            ItemService itemService = new ItemService();
+            itemService.createItem("LIST-I-1", Position.HOME, false);
+            itemService.createItem("LIST-I-2", Position.DELIVERED, false);
+
+            WsRoundtripProbe probe = openAuthedSession();
+
+            String reqJson = """
+        {
+          "type": "Item.List",
+          "payload": {}
+        }
+        """;
+
+            String wire = "Item.List\n" + reqJson;
+            probe.session().sendText(wire, Callback.NOOP);
+
+            String reply = probe.awaitBusinessReply(2_000);
+            assertTrue(reply.startsWith("Item.Snapshot"), "Expected Item.Snapshot but got: " + reply);
+
+            int brace = reply.indexOf('{');
+            JsonNode root = JSON.readTree(reply.substring(brace));
+
+            assertEquals("Item.Snapshot", root.path("type").asText());
+            JsonNode items = root.path("payload").path("orders"); // your spec uses "orders"
+            assertTrue(items.isArray());
+            assertTrue(items.size() >= 2);
+        }
+        @Test
+        void personCreate_roundtrip() throws Exception {
+            WsRoundtripProbe probe = openAuthedSession();
+
+            String reqJson = """
+        {
+          "type": "Person.Create",
+          "payload": {
+            "name": "John Doe",
+            "role": "CUSTOMER"
+          }
+        }
+        """;
+
+            String wire = "Person.Create\n" + reqJson;
+            probe.session().sendText(wire, Callback.NOOP);
+
+            String reply = probe.awaitBusinessReply(2_000);
+            assertTrue(reply.startsWith("Person.Upsert"), "Expected Person.Upsert but got: " + reply);
+            // parse & assert...
+        }
+
+
     }
     //@Nested
     //class UserSecurityTests {}

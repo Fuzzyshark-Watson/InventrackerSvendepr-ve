@@ -1,0 +1,85 @@
+GetAllItemsAttachedToOrder
+	Outbound: OrderItem.ListByOrder
+		{
+		  "type": "OrderItem.ListByOrder",
+		  "payload": {
+			"orderId": 42
+		  }
+		}
+
+	Inbound: OrderItem.SnapshotForOrder
+		{
+		  "type": "OrderItem.SnapshotForOrder",
+		  "payload": {
+			"orderId": 42,
+			"items": [
+			  {
+				"orderId": 42,
+				"itemId": 100,
+				"deleted": false,
+				"item": {
+				  "itemId": 100,
+				  "tagId": "ABC123",
+				  "position": "HOME",
+				  "isOverdue": false,
+				  "deleted": false
+				}
+			  }
+			  // ...
+			]
+		  }
+		}
+
+
+GetOrderItemsPerPosition
+	Outbound: OrderItem.PositionCounts
+		{
+		  "type": "OrderItem.PositionCounts",
+		  "payload": {
+			"orderId": 42
+		  }
+		}
+
+	Inbound: OrderItem.PositionCounts
+		{
+		  "type": "OrderItem.PositionCounts",
+		  "payload": {
+			"orderId": 42,
+			"counts": {
+			  "HOME": 10,
+			  "IN_TRANSIT_OUT": 3,
+			  "DELIVERED": 5,
+			  "IN_TRANSIT_RETURN": 1
+			}
+		  }
+		}
+
+
+GetAllItemReadsAttachedToItem
+	Outbound: ItemRead.ListByItem
+		{
+		  "type": "ItemRead.ListByItem",
+		  "payload": {
+			"itemId": 100,
+			"from": "2025-02-01T00:00:00Z",
+			"to":   "2025-02-10T23:59:59Z"
+		  }
+		}
+
+
+	Inbound: ItemRead.SnapshotForItem
+		{
+		  "type": "ItemRead.SnapshotForItem",
+		  "payload": {
+			"itemId": 100,
+			"reads": [
+			  {
+				"readId": 1,
+				"tagId": "ABC123",
+				"readTime": "2025-02-02T09:32:10Z",
+				"deleted": false
+			  }
+			  // ...
+			]
+		  }
+		}

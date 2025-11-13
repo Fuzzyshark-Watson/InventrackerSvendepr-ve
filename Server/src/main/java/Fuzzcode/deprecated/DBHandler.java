@@ -5,7 +5,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.UUID;
 
-import Fuzzcode.utilities.LoggerHandler;
+import Fuzzcode.Server.utilities.LoggerHandler;
 import org.mindrot.jbcrypt.BCrypt;
 
 

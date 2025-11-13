@@ -1,0 +1,82 @@
+GetAllUsers
+	Outbound: User.List
+		{
+		  "type": "User.List",
+		  "payload": {}
+		}
+	Inbound: User.Snapshot
+		{
+		  "type": "OrderItem.Snapshot",
+		  "payload": {
+			"orders": [
+			  {
+     		    "userId": 5,
+                "username": "alice",
+                "password": "plaintext-or-hash",
+                "role": "ADMIN"
+			  }
+			  // ...
+			]
+		  }
+		}
+
+
+CreateUser
+	Outbound: User.Create
+		{
+		  "type": "User.Create",
+		  "payload": {
+			"username": "alice",
+			"password": "plaintext-or-hash",
+			"role": "ADMIN"
+		  }
+		}
+
+    Inbound: User.Upsert
+		{
+		  "type": "User.Upsert",
+		  "payload": {
+		    "userId": 5,
+			"username": "alice",
+			"password": "plaintext-or-hash",
+			"role": "ADMIN"
+		  }
+		}
+
+UpdateUser
+	Outbound: User.Create
+		{
+		  "type": "User.Update",
+		  "payload": {
+			"userId": 5,
+			"role": "USER"     // and/or other editable fields
+		  }
+		}
+
+	Inbound: User.Upsert
+		{
+		  "type": "User.Upsert",
+		  "payload": {
+		    "userId": 5,
+			"username": "alice",
+			"role": "ADMIN"
+		  }
+		}
+
+DeleteUser
+	Outbound: User.Delete
+		{
+		  "type": "User.Delete",
+		  "payload": {
+			"userId": 5
+		  }
+		}
+
+	Inbound: User.Deleted
+		{
+		  "type": "User.Deleted",
+		  "payload": {
+			"userId": 5
+		  }
+		}
+

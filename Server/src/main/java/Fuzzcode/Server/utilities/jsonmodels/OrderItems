@@ -1,0 +1,84 @@
+GetAllOrderItems
+	Outbound: OrderItem.List
+		{
+		  "type": "OrderItem.List",
+		  "payload": {}
+		}
+
+	Inbound: OrderItem.Snapshot
+		{
+		  "type": "OrderItem.Snapshot",
+		  "payload": {
+			"orders": [
+			  {
+				"orderId": 42,
+				"itemId": 100
+			  }
+			  // ...
+			]
+		  }
+		}
+
+
+CreateOrderItem
+	Outbound: OrderItem.Create
+		{
+		  "type": "OrderItem.Create",
+		  "payload": {
+			"orderId": 42,
+			"itemId": 100
+		  }
+		}
+
+	Inbound: OrderItem.Upsert
+		{
+		  "type": "OrderItem.Upsert",
+		  "payload": {
+			"orderId": 42,
+			"itemId": 100,
+			"deleted": false
+		  }
+		}
+
+
+UpdateOrderItem
+	Outbound: OrderItem.Update
+		{
+		  "type": "OrderItem.Delete",
+		  "payload": {
+			"orderId": 42,
+			"itemId": 100
+		  }
+		}
+
+	Inbound: OrderItem.Upsert
+		{
+		  "type": "OrderItem.Upsert",
+		  "payload": {
+			"order": {
+			  "orderId": 42,
+			  "itemId": 100
+			}
+		  }
+		}
+
+
+DeleteOrderItem
+	Outbound: OrderItem.Delete
+		{
+		  "type": "OrderItem.Delete",
+		  "payload": {
+			"orderId": 42,
+			"itemId": 100,
+			"deleted": true
+		  }
+		}
+
+	Inbound: OrderItem.Deleted
+		{
+		  "type": "OrderItem.Deleted",
+		  "payload": {
+			"orderId": 42,
+			"itemId": 100
+		  }
+		}

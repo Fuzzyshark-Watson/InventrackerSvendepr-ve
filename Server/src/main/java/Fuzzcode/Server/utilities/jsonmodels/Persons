@@ -1,0 +1,81 @@
+GetAllPerson
+	Outbound: Person.List
+		{
+		  "type": "Person.List",
+		  "payload": {}
+		}
+
+    Inbound: Person.Snapshot
+		{
+		  "type": "Person.Snapshot",
+		  "payload": {
+			"orders": [
+			  {
+                "personId": "42",
+                "name": "John Doe",
+                "role": "CUSTOMER"    // ADMIN / USER / DRIVER / CUSTOMER
+			  }
+			  // ...
+			]
+		  }
+		}
+
+CreatePerson
+	Outbound: Person.Create
+		{
+		  "type": "Person.Create",
+		  "payload": {
+			"name": "John Doe",
+			"role": "CUSTOMER"    // ADMIN / USER / DRIVER / CUSTOMER
+		  }
+		}
+
+    Inbound: Person.Upsert
+		{
+		  "type": "Person.Upsert",
+		  "payload": {
+			"personId": "42",
+			"name": "John Doe",
+			"role": "CUSTOMER"    // ADMIN / USER / DRIVER / CUSTOMER
+		  }
+		}
+
+
+UpdatePerson
+	Outbound: Person.Update
+		{
+		  "type": "Person.Update",
+		  "payload": {
+			"personId": 10,
+			"name": "John Doe Jr.",
+			"role": "CUSTOMER"
+		  }
+		}
+
+    Inbound: Person.Upsert
+		{
+		  "type": "Person.Upsert",
+		  "payload": {
+			"personId": "42",
+			"name": "John Doe",
+			"role": "CUSTOMER"    // ADMIN / USER / DRIVER / CUSTOMER
+		  }
+		}
+
+DeletePerson
+	Outbound: Person.Delete
+		{
+		  "type": "Person.Delete",
+		  "payload": {
+			"personId": 10
+		  }
+		}
+
+	Inbound: Person.Deleted
+		{
+		  "type": "Person.Deleted",
+		  "payload": {
+			"personId": 10,
+			"deleted": true
+		  }
+		}
