@@ -99,6 +99,7 @@ public class ItemClient {
             e.printStackTrace();
         }
     }
+    // === HELPERS ===
     private static List<Item> parseItems(JsonNode arr) {
         List<Item> list = new ArrayList<>();
         if (arr == null || !arr.isArray()) return list;

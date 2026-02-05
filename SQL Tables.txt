@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS Orders (
+    OrderID INT AUTO_INCREMENT PRIMARY KEY,
+    CreatedDate DATE NOT NULL,
+    StartDate DATE,
+    EndDate DATE
+);
+
+CREATE TABLE IF NOT EXISTS Items (
+    ItemID INT AUTO_INCREMENT PRIMARY KEY,
+    TagID VARCHAR(255) NOT NULL,
+    Position INT CHECK (Position BETWEEN 1 AND 6),
+    IsOverdue BOOLEAN
+);
+
+CREATE TABLE IF NOT EXISTS OrderItems (
+    OrderID INT NOT NULL,
+    ItemID INT NOT NULL,
+    FOREIGN KEY (OrderID) REFERENCES Orders(OrderID),
+    FOREIGN KEY (ItemID) REFERENCES Items(ItemID),
+    PRIMARY KEY (OrderID, ItemID)
+);
